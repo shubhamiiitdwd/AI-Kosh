@@ -124,101 +124,132 @@ async def suggest_usecases(dataset_id: str) -> UseCaseSuggestionsResponse:
 
 
 def _generate_usecase_suggestions(columns: list[ColumnInfo], filename: str) -> list[UseCaseSuggestion]:
-    suggestions = []
-    col_names = [c.name.lower() for c in columns]
-    col_map = {c.name.lower(): c for c in columns}
+    if not columns:
+        return []
 
-    categorical_cols = [c for c in columns if c.dtype == "object" and 2 <= c.unique_count <= 20]
-    numeric_cols = [c for c in columns if c.dtype in ("float64", "int64")]
-    binary_cols = [c for c in columns if c.unique_count == 2]
+    def _is_numeric(col: ColumnInfo) -> bool:
+        return col.dtype in ("float64", "int64")
 
-    for col in categorical_cols:
+    def _is_id_like(name: str) -> bool:
+        import re
+
+        n = name.lower().strip()
+        if n in {"id", "uuid", "guid", "index", "rownum", "serial"}:
+            return True
+        if n in {"customerid", "orderid", "userid", "productid"}:
+            return True
+        if n.endswith("_id") or n.startswith("id_"):
+            return True
+        return re.search(r"(^|_)(uuid|guid|rownum|serial|index)($|_)", n) is not None
+
+    def _task_scores(col: ColumnInfo) -> tuple[int, int]:
+        """Return (classification_score, regression_score) for this column as target."""
+        name = col.name.lower()
+        cls_score = 0
+        reg_score = 0
+
+        # Strong name priors
+        if any(k in name for k in ("class", "label", "species", "segment", "status", "category", "type", "churn", "survived", "fraud", "default", "outcome")):
+            cls_score += 70
+        if any(k in name for k in ("price", "cost", "amount", "revenue", "sales", "value", "score", "rate", "salary", "income", "demand", "load", "weight")):
+            reg_score += 70
+
+        # Data-type priors
+        if col.dtype == "object" or col.unique_count <= 20:
+            cls_score += 30
+        if _is_numeric(col) and col.unique_count > 20:
+            reg_score += 30
+
+        # Avoid likely identifiers
+        if _is_id_like(col.name):
+            cls_score -= 120
+            reg_score -= 120
+
+        # Penalize mostly-missing columns
+        if col.null_count > 0:
+            cls_score -= 5
+            reg_score -= 5
+
+        return cls_score, reg_score
+
+    numeric_cols = [c for c in columns if _is_numeric(c) and not _is_id_like(c.name)]
+    candidate_cols = [c for c in columns if not _is_id_like(c.name)]
+
+    scored: list[tuple[ColumnInfo, int, int]] = []
+    for c in candidate_cols:
+        cls, reg = _task_scores(c)
+        scored.append((c, cls, reg))
+
+    # Sort by strongest target suitability per task
+    cls_sorted = [x for x in sorted(scored, key=lambda t: t[1], reverse=True) if x[1] > 0]
+    reg_sorted = [x for x in sorted(scored, key=lambda t: t[2], reverse=True) if x[2] > 0]
+
+    suggestions: list[UseCaseSuggestion] = []
+
+    # File-level priors can lift specific tasks
+    fn = filename.lower()
+    if any(k in fn for k in ("iris", "species", "fraud", "churn", "class", "customer_segment")):
+        if cls_sorted:
+            c = cls_sorted[0][0]
+            suggestions.append(UseCaseSuggestion(
+                use_case=f"Classify {c.name} from the remaining features",
+                ml_task="classification",
+                target_hint=c.name,
+            ))
+    if any(k in fn for k in ("housing", "price", "sales", "revenue", "cost", "regression")):
+        if reg_sorted:
+            c = reg_sorted[0][0]
+            suggestions.append(UseCaseSuggestion(
+                use_case=f"Predict {c.name} as a continuous value",
+                ml_task="regression",
+                target_hint=c.name,
+            ))
+
+    # Top classification suggestion(s)
+    for c, _, _ in cls_sorted[:2]:
         suggestions.append(UseCaseSuggestion(
-            use_case=f"Predict {col.name} based on other features",
+            use_case=f"Classify {c.name} based on other columns",
             ml_task="classification",
-            target_hint=col.name,
+            target_hint=c.name,
         ))
 
-    for col in binary_cols:
-        if col not in categorical_cols:
-            suggestions.append(UseCaseSuggestion(
-                use_case=f"Classify whether {col.name} is true or false",
-                ml_task="classification",
-                target_hint=col.name,
-            ))
+    # Top regression suggestion(s)
+    for c, _, _ in reg_sorted[:2]:
+        suggestions.append(UseCaseSuggestion(
+            use_case=f"Predict {c.name} using regression",
+            ml_task="regression",
+            target_hint=c.name,
+        ))
 
-    for col in numeric_cols:
-        name_lower = col.name.lower()
-        if any(kw in name_lower for kw in ("price", "cost", "salary", "revenue", "amount", "value", "sales")):
-            suggestions.append(UseCaseSuggestion(
-                use_case=f"Predict {col.name} using regression",
-                ml_task="regression",
-                target_hint=col.name,
-            ))
+    # Clustering suggestion for datasets with sufficient numeric signals.
+    if len(numeric_cols) >= 2:
+        top_feats = ", ".join(c.name for c in numeric_cols[:3])
+        suggestions.append(UseCaseSuggestion(
+            use_case=f"Cluster records into groups using numeric features ({top_feats})",
+            ml_task="clustering",
+            target_hint="No target (unsupervised)",
+        ))
 
-    if numeric_cols and not suggestions:
-        target = numeric_cols[-1]
-        if target.unique_count > 10:
-            suggestions.append(UseCaseSuggestion(
-                use_case=f"Predict {target.name} as a continuous value",
-                ml_task="regression",
-                target_hint=target.name,
-            ))
-
-    if any(kw in filename.lower() for kw in ("iris", "flower", "species")):
-        species_col = next((c.name for c in columns if "species" in c.name.lower()), None)
-        if species_col:
-            suggestions.insert(0, UseCaseSuggestion(
-                use_case=f"Classify flower species using measurements",
-                ml_task="classification",
-                target_hint=species_col,
-            ))
-
-    if any(kw in filename.lower() for kw in ("hous", "real_estate", "property")):
-        price_col = next((c.name for c in columns if "price" in c.name.lower()), None)
-        if price_col:
-            suggestions.insert(0, UseCaseSuggestion(
-                use_case=f"Predict house price based on property features",
-                ml_task="regression",
-                target_hint=price_col,
-            ))
-
-    if any(kw in " ".join(col_names) for kw in ("churn", "cancel", "leave", "attrition")):
-        churn_col = next((c.name for c in columns if any(kw in c.name.lower() for kw in ("churn", "cancel", "leave", "attrition"))), None)
-        if churn_col:
-            suggestions.insert(0, UseCaseSuggestion(
-                use_case=f"Predict customer churn / attrition",
-                ml_task="classification",
-                target_hint=churn_col,
-            ))
-
-    if numeric_cols and len(suggestions) < 3:
-        for col in numeric_cols:
-            if col.unique_count > 10 and not any(s.target_hint == col.name for s in suggestions):
-                suggestions.append(UseCaseSuggestion(
-                    use_case=f"Predict {col.name} value using regression analysis",
-                    ml_task="regression",
-                    target_hint=col.name,
-                ))
-                break
-
-    if categorical_cols and len(suggestions) < 3:
-        for col in categorical_cols:
-            if not any(s.target_hint == col.name for s in suggestions):
-                suggestions.append(UseCaseSuggestion(
-                    use_case=f"Build a classifier to determine {col.name}",
-                    ml_task="classification",
-                    target_hint=col.name,
-                ))
-                break
-
+    # Deduplicate and keep diverse top 5
+    unique: list[UseCaseSuggestion] = []
     seen = set()
-    unique = []
     for s in suggestions:
-        key = (s.target_hint, s.ml_task)
-        if key not in seen:
-            seen.add(key)
-            unique.append(s)
+        key = (s.ml_task, s.target_hint)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(s)
+
+    # Ensure at least one fallback exists
+    if not unique:
+        c = columns[-1]
+        fallback_task = "regression" if _is_numeric(c) and c.unique_count > 20 else "classification"
+        unique.append(UseCaseSuggestion(
+            use_case=f"Model {c.name} from the remaining features",
+            ml_task=fallback_task,
+            target_hint=c.name,
+        ))
+
     return unique[:5]
 
 
@@ -318,13 +349,42 @@ async def _run_training(run_id: str):
 
         await _update_run(run_id, TrainingStatus.TRAINING, 30, "Starting AutoML training...")
 
+        # Surface runtime capability constraints early so users know why some algos are skipped.
+        try:
+            if not h2o_engine.is_xgboost_available():
+                await _update_run(
+                    run_id,
+                    TrainingStatus.TRAINING,
+                    31,
+                    "XGBoost is not available in this local H2O runtime; continuing with GBM/DRF/GLM/DeepLearning.",
+                )
+        except Exception:
+            pass
+
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(
             h2o_engine.train_automl, aml, req.feature_columns, req.target_column, frame
         )
 
+        heartbeat_progress = 31
+        heartbeat_step = 2
+        heartbeat_chars = ["|", "/", "-", "\\"]
+        heartbeat_i = 0
+        started = datetime.now()
+
+        # H2O AutoML train() is blocking, so stream synthetic heartbeat logs to reassure users
+        # that training is actively running in real-time.
         while not future.done():
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
+            elapsed_s = int((datetime.now() - started).total_seconds())
+            heartbeat_i += 1
+            heartbeat_progress = min(heartbeat_progress + heartbeat_step, 74)
+            await _update_run(
+                run_id,
+                TrainingStatus.TRAINING,
+                heartbeat_progress,
+                f"AutoML training in progress {heartbeat_chars[heartbeat_i % len(heartbeat_chars)]} ({elapsed_s}s elapsed)...",
+            )
 
         future.result()
         executor.shutdown(wait=False)
@@ -492,7 +552,18 @@ async def get_leaderboard(run_id: str) -> LeaderboardResponse:
         raise HTTPException(404, "Results not found. Training may still be in progress.")
 
     result = run["result"]
-    primary_metric = "auc" if result["ml_task"] == "classification" else "rmse"
+
+    # Pick a primary metric that actually exists in leaderboard rows.
+    metric_keys: list[str] = []
+    if result["leaderboard"]:
+        metric_keys = [k for k in result["leaderboard"][0].metrics.keys()]
+
+    if result["ml_task"] == "classification":
+        pref = ["auc", "logloss", "mean_per_class_error", "accuracy", "rmse", "mse"]
+    else:
+        pref = ["rmse", "mae", "r2", "mse", "rmsle"]
+
+    primary_metric = next((m for m in pref if m in metric_keys), (metric_keys[0] if metric_keys else "score"))
 
     return LeaderboardResponse(
         run_id=run_id,
@@ -846,4 +917,5 @@ def _rule_based_summary(best_algo, best_id, target, ml_task, metrics, num_models
         key_insights=insights,
         recommendations=recommendations,
         real_world_example=real_world,
+        source="rule-based",
     )

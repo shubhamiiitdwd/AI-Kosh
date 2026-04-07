@@ -1,17 +1,10 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import type { LeaderboardResponse, FeatureImportanceResponse } from '../types';
+import type { LeaderboardResponse, AISummaryResponse } from '../types';
 import * as api from '../api';
 
 interface Props {
   runId: string;
-}
-
-interface AISummary {
-  executive_summary: string;
-  key_insights: string[];
-  recommendations: string[];
-  real_world_example: string;
 }
 
 interface GainsLiftRow {
@@ -30,14 +23,13 @@ interface PredictionResult {
 
 export default function StepResults({ runId }: Props) {
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
-  const [featureImp, setFeatureImp] = useState<FeatureImportanceResponse | null>(null);
   const [bestModelData, setBestModelData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'performance' | 'predict'>('leaderboard');
   const [sortMetric, setSortMetric] = useState('');
   const [showMetricDropdown, setShowMetricDropdown] = useState(false);
 
-  const [aiSummary, setAiSummary] = useState<AISummary | null>(null);
+  const [aiSummary, setAiSummary] = useState<AISummaryResponse | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [gainsLift, setGainsLift] = useState<GainsLiftRow[]>([]);
 
@@ -50,13 +42,11 @@ export default function StepResults({ runId }: Props) {
   useEffect(() => {
     const load = async () => {
       try {
-        const [lb, fi, bm] = await Promise.all([
+        const [lb, bm] = await Promise.all([
           api.getLeaderboard(runId),
-          api.getFeatureImportance(runId).catch(() => null),
           api.getBestModel(runId).catch(() => null),
         ]);
         setLeaderboard(lb);
-        setFeatureImp(fi);
         setBestModelData(bm);
 
         if (lb && lb.models[0]) {
@@ -427,6 +417,11 @@ export default function StepResults({ runId }: Props) {
           <div className="aw-ai-summary-tags">
             <span className="aw-badge aw-badge--orange">Target: {targetCol}</span>
             <span className="aw-badge aw-badge--green">Task: {mlTask?.toUpperCase()}</span>
+            {aiSummary?.source && (
+              <span className={`aw-badge ${aiSummary.source === 'huggingface' ? 'aw-badge--green' : 'aw-badge--orange'}`}>
+                AI Source: {aiSummary.source === 'huggingface' ? 'HuggingFace' : 'Rule-based fallback'}
+              </span>
+            )}
           </div>
           <button className="aw-btn aw-btn--ai aw-btn--full" onClick={handleGenerateSummary} disabled={aiLoading}>
             {aiLoading ? '⏳ Generating...' : '✦ Generate Summary'}

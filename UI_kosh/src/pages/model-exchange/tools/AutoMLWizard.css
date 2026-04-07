@@ -181,6 +181,18 @@
 
 /* ── AI Suggestion Chips ─────────────────────────────────────────────────── */
 .aw-ai-suggestions { margin-bottom: 14px; }
+.aw-suggestion-filter {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.aw-suggestion-filter-btn {
+  border: 1px solid #ddd; background: #fff; color: #666;
+  border-radius: 16px; padding: 4px 10px; font-size: 11px;
+  text-transform: capitalize; cursor: pointer;
+}
+.aw-suggestion-filter-btn:hover { border-color: #e67e22; color: #e67e22; }
+.aw-suggestion-filter-btn--active {
+  background: #e67e22; border-color: #e67e22; color: #fff;
+}
 .aw-suggestion-chips { display: flex; flex-direction: column; gap: 6px; }
 .aw-suggestion-chip {
   display: flex; justify-content: space-between; align-items: center;
@@ -198,6 +210,9 @@
 .aw-suggestion-task--classification { background: #d5f5e3; color: #27ae60; }
 .aw-suggestion-task--regression { background: #dbeafe; color: #2563eb; }
 .aw-suggestion-task--clustering { background: #fde8e8; color: #e74c3c; }
+.aw-suggestion-empty {
+  font-size: 12px; color: #999; padding: 8px 2px;
+}
 
 /* ── Preview Table ───────────────────────────────────────────────────────── */
 .aw-preview-table-wrap { overflow-x: auto; }

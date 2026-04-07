@@ -33,6 +33,7 @@ export interface AIRecommendResponse {
   features: string[];
   confidence: string;
   reasoning: string;
+  source?: string;
 }
 
 export interface UseCaseSuggestion {
@@ -44,6 +45,14 @@ export interface UseCaseSuggestion {
 export interface UseCaseSuggestionsResponse {
   dataset_id: string;
   suggestions: UseCaseSuggestion[];
+}
+
+export interface AISummaryResponse {
+  executive_summary: string;
+  key_insights: string[];
+  recommendations: string[];
+  real_world_example: string;
+  source?: string;
 }
 
 export interface TrainingStartRequest {

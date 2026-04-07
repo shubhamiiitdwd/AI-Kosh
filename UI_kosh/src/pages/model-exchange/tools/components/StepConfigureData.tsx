@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { ColumnInfo, AIRecommendResponse, DatasetPreviewResponse, UseCaseSuggestion } from '../types';
+import type { ColumnInfo, AIRecommendResponse, DatasetPreviewResponse, UseCaseSuggestion, MLTask } from '../types';
 import * as api from '../api';
 
 interface Props {
@@ -9,12 +9,13 @@ interface Props {
   featureColumns: string[];
   onTargetChange: (col: string) => void;
   onFeaturesChange: (cols: string[]) => void;
+  onTaskSuggest: (task: MLTask) => void;
   onContinue: () => void;
 }
 
 export default function StepConfigureData({
   datasetId, columns, targetColumn, featureColumns,
-  onTargetChange, onFeaturesChange, onContinue,
+  onTargetChange, onFeaturesChange, onTaskSuggest, onContinue,
 }: Props) {
   const [activeTab, setActiveTab] = useState<'config' | 'preview'>('config');
   const [useCase, setUseCase] = useState('');
@@ -23,6 +24,7 @@ export default function StepConfigureData({
   const [preview, setPreview] = useState<DatasetPreviewResponse | null>(null);
   const [suggestions, setSuggestions] = useState<UseCaseSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [taskFilter, setTaskFilter] = useState<MLTask | null>(null);
 
   useEffect(() => {
     setSuggestionsLoading(true);
@@ -40,6 +42,9 @@ export default function StepConfigureData({
       setAiResult(result);
       onTargetChange(result.target_column);
       onFeaturesChange(result.features);
+      // Align pipeline task with user's selected AI task filter to avoid
+      // classification/regression mismatch in training/results.
+      if (taskFilter) onTaskSuggest(taskFilter);
     } catch { /* ignore */ }
     finally { setAiLoading(false); }
   };
@@ -68,6 +73,10 @@ export default function StepConfigureData({
     'int64': '#3498db',
     'bool': '#9b59b6',
   };
+
+  const visibleSuggestions = taskFilter
+    ? suggestions.filter((s) => s.ml_task === taskFilter)
+    : [];
 
   return (
     <div className="aw-step-content">
@@ -160,17 +169,48 @@ export default function StepConfigureData({
           {suggestions.length > 0 && (
             <div className="aw-ai-suggestions">
               <label className="aw-ai-label">💡 Suggested Use Cases</label>
+              <div className="aw-suggestion-filter">
+                {(['classification', 'regression', 'clustering'] as const).map((task) => (
+                  <button
+                    key={task}
+                    className={`aw-suggestion-filter-btn ${taskFilter === task ? 'aw-suggestion-filter-btn--active' : ''}`}
+                    onClick={() => {
+                      setTaskFilter(task);
+                      onTaskSuggest(task);
+                    }}
+                  >
+                    {task}
+                  </button>
+                ))}
+              </div>
               <div className="aw-suggestion-chips">
-                {suggestions.map((s, i) => (
+                {!taskFilter && (
+                  <div className="aw-suggestion-empty">
+                    Select a task above to view suggested use cases.
+                  </div>
+                )}
+                {visibleSuggestions.map((s, i) => (
                   <button
                     key={i}
                     className={`aw-suggestion-chip ${useCase === s.use_case ? 'aw-suggestion-chip--active' : ''}`}
-                    onClick={() => setUseCase(s.use_case)}
+                    onClick={() => {
+                      setUseCase(s.use_case);
+                      if (s.ml_task === 'classification' || s.ml_task === 'regression' || s.ml_task === 'clustering') {
+                        const t = s.ml_task as MLTask;
+                        setTaskFilter(t);
+                        onTaskSuggest(t);
+                      }
+                    }}
                   >
                     <span className="aw-suggestion-text">{s.use_case}</span>
                     <span className={`aw-suggestion-task aw-suggestion-task--${s.ml_task}`}>{s.ml_task}</span>
                   </button>
                 ))}
+                {taskFilter && visibleSuggestions.length === 0 && (
+                  <div className="aw-suggestion-empty">
+                    No suggestions for {taskFilter}. Try another filter.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -194,6 +234,14 @@ export default function StepConfigureData({
                 <span>✨ AI Recommendation</span>
                 <span className="aw-badge aw-badge--green">{aiResult.confidence}</span>
               </div>
+              {aiResult.source && (
+                <div className="aw-ai-field">
+                  <label>AI Source</label>
+                  <span className={`aw-badge ${aiResult.source === 'huggingface' ? 'aw-badge--green' : 'aw-badge--orange'}`}>
+                    {aiResult.source === 'huggingface' ? 'HuggingFace' : 'Rule-based fallback'}
+                  </span>
+                </div>
+              )}
               <div className="aw-ai-field">
                 <label>Target Column</label>
                 <span className="aw-badge aw-badge--orange">{aiResult.target_column}</span>

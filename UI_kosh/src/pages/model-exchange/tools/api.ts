@@ -4,15 +4,14 @@ import type {
   AIRecommendResponse, TrainingStartRequest, TrainingStartResponse,
   TrainingStatusResponse, LeaderboardResponse, FeatureImportanceResponse,
   ConfusionMatrixResponse, ResidualsResponse, UseCaseSuggestionsResponse,
-  HFDatasetInfo,
+  HFDatasetInfo, AISummaryResponse,
 } from './types';
 
-// In development, use empty string so requests go through the Vite proxy
-// (configured in vite.config.ts) which avoids CORS issues.
-// In production, use the VITE_API_URL environment variable.
-const BASE = import.meta.env.PROD
-  ? (import.meta.env.VITE_API_URL ?? 'http://localhost:8001')
-  : '';
+// Dev: empty baseURL → requests go to Vite; vite.config.ts proxies /team1 to FastAPI (no CORS).
+// Prod: set VITE_API_URL or fall back to localhost API.
+const BASE =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? '' : 'http://localhost:8001');
 const api = axios.create({ baseURL: BASE });
 
 export const uploadDataset = async (file: File): Promise<DatasetMetadata> => {
@@ -113,7 +112,7 @@ export const getGainsLift = async (runId: string) => {
   return data;
 };
 
-export const generateAISummary = async (runId: string) => {
+export const generateAISummary = async (runId: string): Promise<AISummaryResponse> => {
   const { data } = await api.post(`/team1/results/${runId}/ai-summary`);
   return data;
 };
@@ -130,10 +129,14 @@ export const importHFDataset = async (hfId: string): Promise<DatasetMetadata> =>
 };
 
 export const getWsUrl = (runId: string) => {
-  // In dev mode (BASE is empty), derive WebSocket URL from current page origin
-  // so it goes through the Vite proxy.
-  const wsBase = BASE
-    ? BASE.replace(/^http/, 'ws')
-    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-  return `${wsBase}/team1/ws/training/${runId}`;
+  if (BASE) {
+    const wsBase = BASE.replace(/^http/, 'ws');
+    return `${wsBase}/team1/ws/training/${runId}`;
+  }
+  // Do not send training WebSockets through the Vite dev proxy — it often logs
+  // "ws proxy error: write ECONNABORTED" when FastAPI closes the socket or uvicorn reloads.
+  // HTTP still uses the Vite proxy (same-origin). WS connects straight to the API port.
+  const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+  const port = import.meta.env.VITE_BACKEND_PORT || '8001';
+  return `ws://${host}:${port}/team1/ws/training/${runId}`;
 };

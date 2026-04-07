@@ -37,6 +37,25 @@ def init_h2o(max_mem_size: str = "2G") -> bool:
             return False
 
 
+def is_xgboost_available() -> bool:
+    """Check whether XGBoost extension is available in current H2O runtime."""
+    if not _h2o or not _h2o_available:
+        return False
+    try:
+        cluster = _h2o.cluster()
+        if hasattr(cluster, "list_all_extensions"):
+            exts = cluster.list_all_extensions() or []
+            for ext in exts:
+                name = str(ext.get("name", "")).lower()
+                enabled = bool(ext.get("enabled", False))
+                if "xgboost" in name:
+                    return enabled
+        # If extension list is unavailable, do not assume availability.
+        return False
+    except Exception:
+        return False
+
+
 def shutdown_h2o():
     if _h2o and _h2o_available:
         try:

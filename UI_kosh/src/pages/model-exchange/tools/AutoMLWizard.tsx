@@ -114,7 +114,11 @@ const AutoMLWizard = ({ onBack }: Props) => {
 
         <div className="aw-content">
           {step === 0 && (
-            <StepSelectDataset dataset={dataset} onSelect={handleDatasetSelect} />
+            <StepSelectDataset
+              dataset={dataset}
+              onSelect={handleDatasetSelect}
+              onContinue={() => dataset && setStep(1)}
+            />
           )}
           {step === 1 && dataset && (
             <StepConfigureData
@@ -124,6 +128,7 @@ const AutoMLWizard = ({ onBack }: Props) => {
               featureColumns={featureColumns}
               onTargetChange={setTargetColumn}
               onFeaturesChange={setFeatureColumns}
+              onTaskSuggest={setMlTask}
               onContinue={handleConfigContinue}
             />
           )}

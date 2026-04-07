@@ -43,6 +43,7 @@ class AIRecommendResponse(BaseModel):
     features: list[str]
     confidence: str = "high confidence"
     reasoning: str = ""
+    source: str = "rule-based"
 
 
 class UseCaseSuggestion(BaseModel):
@@ -177,6 +178,7 @@ class AISummaryResponse(BaseModel):
     key_insights: list[str]
     recommendations: list[str]
     real_world_example: str
+    source: str = "rule-based"
 
 
 class HFDatasetInfo(BaseModel):

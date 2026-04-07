@@ -5,6 +5,7 @@ import * as api from '../api';
 interface Props {
   dataset: DatasetMetadata | null;
   onSelect: (ds: DatasetMetadata) => void;
+  onContinue?: () => void;
 }
 
 const TASK_COLORS: Record<string, string> = {
@@ -13,7 +14,7 @@ const TASK_COLORS: Record<string, string> = {
   clustering: '#9333ea',
 };
 
-export default function StepSelectDataset({ dataset, onSelect }: Props) {
+export default function StepSelectDataset({ dataset, onSelect, onContinue }: Props) {
   const [datasets, setDatasets] = useState<DatasetMetadata[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -123,6 +124,9 @@ export default function StepSelectDataset({ dataset, onSelect }: Props) {
                 <span className="aw-badge">{dataset.category}</span>
               </div>
             </div>
+            <button className="aw-btn aw-btn--primary aw-btn--full" onClick={() => onContinue?.()}>
+              Continue to Configure Data →
+            </button>
           </div>
         ) : (
           <>

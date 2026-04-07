@@ -35,7 +35,15 @@ cd "c:\Users\HP\Desktop\AI kosh\UI_kosh"
 npm run dev
 ```
 
-Frontend runs at **http://localhost:5173**
+Frontend runs at **http://localhost:5173** (or the next free port, e.g. 5176).
+
+### Running on another computer
+
+1. Clone the repo and run **First-Time Setup** below on that machine.
+2. Copy `AI_Kosh_Project/.env.example` to `AI_Kosh_Project/.env` and set at least `HUGGINGFACE_TOKEN` if you use AI features.
+3. **Java 17** must be on `PATH` (or set `JAVA_HOME`) before starting the backend — H2O needs it.
+4. In **development**, leave **`VITE_API_URL` unset** in `UI_kosh/.env`. The UI talks to the Vite dev server, which **proxies** `/team1` to `http://127.0.0.1:8001`, avoiding CORS issues. Only set `VITE_API_URL` when you intentionally call the API directly (e.g. production build against a known API URL).
+5. Optional: `CORS_ORIGINS` in `AI_Kosh_Project/.env` — default `*` is fine for local dev with the backend’s CORS settings.
 
 ## First-Time Setup (only once)
 

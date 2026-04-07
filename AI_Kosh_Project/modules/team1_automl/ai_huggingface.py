@@ -43,6 +43,7 @@ def _rule_based_recommend(columns: list[ColumnInfo], use_case: str) -> AIRecomme
         features=features,
         confidence="high confidence",
         reasoning=reasoning,
+        source="rule-based",
     )
 
 
@@ -96,6 +97,7 @@ async def recommend(columns: list[ColumnInfo], use_case: str) -> AIRecommendResp
                 features=features,
                 confidence="high confidence",
                 reasoning=data.get("reasoning", "AI-powered recommendation"),
+                source="huggingface",
             )
         else:
             return _rule_based_recommend(columns, use_case)
@@ -152,6 +154,7 @@ async def generate_results_summary(
                 key_insights=data.get("key_insights", []),
                 recommendations=data.get("recommendations", []),
                 real_world_example=data.get("real_world_example", ""),
+                source="huggingface",
             )
     except Exception as e:
         logger.warning(f"HF summary failed: {e}")

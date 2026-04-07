@@ -12,8 +12,7 @@ dist/
 dist-ssr/
 *.local
 
-# Environment & secrets
-.env
+# Environment & secrets (keep real tokens only locally; never commit live secrets)
 *.env.local
 
 # Runtime data
